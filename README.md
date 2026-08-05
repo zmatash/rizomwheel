@@ -12,7 +12,13 @@ The source project ships as loose files rather than a package. rizomwheel downlo
 ## Install
 
 ```sh
-uv add rizomwheel
+uv tool install git+https://github.com/zmatash/rizomwheel.git
+```
+
+To run it once without installing:
+
+```sh
+uvx --from git+https://github.com/zmatash/rizomwheel.git rizomwheel
 ```
 
 ## Usage 
