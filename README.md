@@ -65,3 +65,7 @@ name = "rizomuvlink"
 output-dir = "dist"
 work-dir = "build/rizomwheel"
 ```
+
+## Disclaimer
+
+This is an unofficial, third-party tool. It is not affiliated with Rizom-Lab.
