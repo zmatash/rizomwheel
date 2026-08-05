@@ -59,9 +59,3 @@ name = "rizomuvlink"
 output-dir = "dist"
 work-dir = "build/rizomwheel"
 ```
-## Development
-
-```sh
-uv sync
-uv run pytest
-```
