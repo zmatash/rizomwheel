@@ -52,7 +52,11 @@ def test_run_chains_download_stage_and_build(tmp_path, make_repo, monkeypatch, c
     output_dir = tmp_path / "out"
     seen = {}
 
-    monkeypatch.setattr(rizomwheel, "download_repository", lambda w: repo)
+    monkeypatch.setattr(
+        rizomwheel,
+        "download_repository",
+        lambda w, c: seen.update(commit=c) or repo,
+    )
     monkeypatch.setattr(
         rizomwheel,
         "stage_project",
@@ -62,9 +66,10 @@ def test_run_chains_download_stage_and_build(tmp_path, make_repo, monkeypatch, c
         rizomwheel, "build_wheel", lambda b, o: seen.update(built=(b, o))
     )
 
-    rizomwheel.run(work_dir, output_dir, "custom")
+    rizomwheel.run(work_dir, output_dir, "custom", "abc1234")
 
     assert seen["repo"] == repo
+    assert seen["commit"] == "abc1234"
     assert seen["build"] == work_dir / "build"
     assert seen["name"] == "custom"
     assert seen["built"] == (work_dir / "build", output_dir)

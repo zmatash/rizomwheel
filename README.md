@@ -24,7 +24,7 @@ uvx --from git+https://github.com/zmatash/rizomwheel.git rizomwheel
 ## Usage 
 
 ```sh
-rizomwheel [-o OUTPUT_DIR] [--work-dir WORK_DIR] [--name NAME]
+rizomwheel [-o OUTPUT_DIR] [--work-dir WORK_DIR] [--name NAME] [--commit COMMIT]
 ```
 
 The default run downloads the source, builds, and writes the wheel to `./dist`:
@@ -36,6 +36,7 @@ The default run downloads the source, builds, and writes the wheel to `./dist`:
 | `-o`, `--output-dir` | `./dist` | Directory to write the wheel into. Created if missing. |
 | `--work-dir` | a temporary directory | Build in this directory instead, and keep it afterwards. Useful for inspecting the staged project. |
 | `--name` | `rizomuvlink` | Distribution name for the generated wheel. |
+| `--commit` | latest on `main` | Build from this commit instead. Full or abbreviated hash (7+ characters). |
 | `-h`, `--help` | | Show usage and exit. |
 
 Examples:
@@ -49,6 +50,9 @@ rizomwheel --work-dir ./scratch
 
 # override the wheel name
 rizomwheel --name rizomuvlink-alt
+
+# pin the source to a commit
+rizomwheel --commit dfe9502
 ```
 
 The wheel version is always `1.0.0`. The source repo does not publish a version, and one is not
@@ -64,6 +68,7 @@ its ancestors.
 name = "rizomuvlink"
 output-dir = "dist"
 work-dir = "build/rizomwheel"
+commit = "dfe9502"
 ```
 
 ## Disclaimer

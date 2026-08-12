@@ -1,4 +1,4 @@
-"""Build a wheel from the latest RizomUVLink source on GitHub."""
+"""Build a wheel from the RizomUVLink source on GitHub."""
 
 import argparse
 import re
@@ -13,6 +13,8 @@ import urllib.request
 from pathlib import Path
 
 REPOSITORY_URL = "https://github.com/RemiArq/RizomUVLink/archive/refs/heads/main.tar.gz"
+# GitHub serves a source archive per commit under the same /archive/ path.
+COMMIT_URL_TEMPLATE = "https://github.com/RemiArq/RizomUVLink/archive/{commit}.tar.gz"
 
 MODULES = ["RizomUVLink.py", "RizomUVLinkBase.py"]
 PACKAGES = ["win"]
@@ -22,10 +24,12 @@ DEFAULT_NAME = "rizomuvlink"
 DEFAULT_OUTPUT_DIR = "dist"
 # valid name
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
+# Full or abbreviated commit hash; anything else could not name a commit anyway.
+COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 # Settings accepted under [tool.rizomwheel], mirroring the command line flags.
 CONFIG_TABLE = "rizomwheel"
-CONFIG_KEYS = ("name", "output-dir", "work-dir")
+CONFIG_KEYS = ("name", "output-dir", "work-dir", "commit")
 CONFIG_FILENAME = "pyproject.toml"
 
 # Constant version, source doesn't provide one and I don't want to generate one.
@@ -125,16 +129,33 @@ def pick_path(
     return None
 
 
-def download_repository(work_dir: Path) -> Path:
-    """Download and extract the latest source, returning the repository root."""
+def archive_url(commit: str | None) -> str:
+    """URL of the source archive for a commit, or for the tip of main."""
+    if commit is None:
+        return REPOSITORY_URL
+    return COMMIT_URL_TEMPLATE.format(commit=commit)
+
+
+def download_repository(work_dir: Path, commit: str | None = None) -> Path:
+    """Download and extract the source, returning the repository root.
+
+    Without a commit this takes the current tip of the main branch.
+    """
+    url = archive_url(commit)
     archive = work_dir / "RizomUVLink.tar.gz"
-    print(f"Downloading {REPOSITORY_URL}")
+    print(f"Downloading {url}")
     try:
         with (
-            urllib.request.urlopen(REPOSITORY_URL) as response,
+            urllib.request.urlopen(url) as response,
             archive.open("wb") as handle,
         ):
             shutil.copyfileobj(response, handle)
+    except urllib.error.HTTPError as error:
+        if error.code == 404 and commit is not None:
+            raise SystemExit(
+                f"Download failed: no such commit in the repository: {commit}"
+            ) from error
+        raise SystemExit(f"Download failed: {error}") from error
     except urllib.error.URLError as error:
         raise SystemExit(f"Download failed: {error}") from error
 
@@ -199,7 +220,7 @@ def build_wheel(build_dir: Path, output_dir: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build a wheel from the latest RizomUVLink source."
+        description="Build a wheel from the RizomUVLink source."
     )
     parser.add_argument(
         "-o",
@@ -219,11 +240,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=f"Distribution name for the generated wheel (default: {DEFAULT_NAME})",
     )
+    parser.add_argument(
+        "--commit",
+        default=None,
+        help="Build from this commit hash instead of the latest main branch.",
+    )
     return parser.parse_args()
 
 
-def run(work_dir: Path, output_dir: Path, dist_name: str) -> None:
-    repo = download_repository(work_dir)
+def run(
+    work_dir: Path, output_dir: Path, dist_name: str, commit: str | None = None
+) -> None:
+    repo = download_repository(work_dir, commit)
     build_dir = work_dir / "build"
     stage_project(repo, build_dir, dist_name)
     build_wheel(build_dir, output_dir)
@@ -238,6 +266,10 @@ def main():
     if not NAME_PATTERN.match(dist_name):
         raise SystemExit(f"Not a valid distribution name: {dist_name!r}")
 
+    commit = args.commit or config.get("commit")
+    if commit is not None and not COMMIT_PATTERN.match(commit):
+        raise SystemExit(f"Not a valid commit hash: {commit!r}")
+
     output_dir = pick_path(args.output_dir, config.get("output-dir"), base)
     if output_dir is None:
         output_dir = Path(DEFAULT_OUTPUT_DIR).resolve()
@@ -245,13 +277,13 @@ def main():
 
     if work_dir is not None:
         work_dir.mkdir(parents=True, exist_ok=True)
-        run(work_dir, output_dir, dist_name)
+        run(work_dir, output_dir, dist_name, commit)
         print(f"Build tree kept at {work_dir}")
     else:
         with tempfile.TemporaryDirectory(
             prefix="rizomwheel-", ignore_cleanup_errors=True
         ) as temp_dir:
-            run(Path(temp_dir), output_dir, dist_name)
+            run(Path(temp_dir), output_dir, dist_name, commit)
 
 
 if __name__ == "__main__":
