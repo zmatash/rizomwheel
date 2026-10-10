@@ -26,7 +26,7 @@ def make_repo():
 
     def make(root: Path, *, modules=None, packages=None, metadata=None) -> Path:
         modules = rizomwheel.MODULES if modules is None else modules
-        packages = rizomwheel.PACKAGES if packages is None else packages
+        packages = list(rizomwheel.PLATFORMS) if packages is None else packages
         metadata = rizomwheel.METADATA_FILES if metadata is None else metadata
 
         root.mkdir(parents=True, exist_ok=True)
@@ -35,7 +35,10 @@ def make_repo():
         for name in packages:
             package = root / name
             package.mkdir()
-            (package / "RizomUVLink.pyd").write_bytes(b"\x00binary")
+            suffix = "pyd" if name == "win" else "so"
+            for version in ("310", "39"):
+                binary = package / f"rizomuvlink_python{version}.{suffix}"
+                binary.write_bytes(b"\x00binary")
         for name in metadata:
             (root / name).write_text(f"{name} from source\n", encoding="utf-8")
         return root

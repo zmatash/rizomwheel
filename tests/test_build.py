@@ -51,6 +51,8 @@ def test_run_chains_download_stage_and_build(tmp_path, make_repo, monkeypatch, c
     work_dir.mkdir()
     output_dir = tmp_path / "out"
     seen = {}
+    staged = []
+    built = []
 
     monkeypatch.setattr(
         rizomwheel,
@@ -60,17 +62,14 @@ def test_run_chains_download_stage_and_build(tmp_path, make_repo, monkeypatch, c
     monkeypatch.setattr(
         rizomwheel,
         "stage_project",
-        lambda r, b, n: seen.update(repo=r, build=b, name=n),
+        lambda r, b, n, p: staged.append((r, b, n, p)),
     )
-    monkeypatch.setattr(
-        rizomwheel, "build_wheel", lambda b, o: seen.update(built=(b, o))
-    )
+    monkeypatch.setattr(rizomwheel, "build_wheel", lambda b, o: built.append((b, o)))
 
     rizomwheel.run(work_dir, output_dir, "custom", "abc1234")
 
-    assert seen["repo"] == repo
     assert seen["commit"] == "abc1234"
-    assert seen["build"] == work_dir / "build"
-    assert seen["name"] == "custom"
-    assert seen["built"] == (work_dir / "build", output_dir)
+    platforms = list(rizomwheel.PLATFORMS)
+    assert staged == [(repo, work_dir / "build" / p, "custom", p) for p in platforms]
+    assert built == [(work_dir / "build" / p, output_dir) for p in platforms]
     assert str(output_dir) in capsys.readouterr().out

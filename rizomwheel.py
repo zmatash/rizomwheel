@@ -17,7 +17,18 @@ REPOSITORY_URL = "https://github.com/RemiArq/RizomUVLink/archive/refs/heads/main
 COMMIT_URL_TEMPLATE = "https://github.com/RemiArq/RizomUVLink/archive/{commit}.tar.gz"
 
 MODULES = ["RizomUVLink.py", "RizomUVLinkBase.py"]
-PACKAGES = ["win"]
+# Each platform's binaries live in their own package; a wheel can carry only one
+# platform tag, so every package present in the source becomes its own wheel.
+# mac: universal2 binaries built for macOS 10.15 (x86_64) and 11.0 (arm64).
+# linux: x86_64 binaries needing glibc 2.17 but GLIBCXX_3.4.21, which is
+# beyond what manylinux 2.17 allows, so the 2.24 policy is the honest tag.
+PLATFORMS = {
+    "win": "win_amd64",
+    "mac": "macosx_10_15_universal2",
+    "linux": "manylinux_2_24_x86_64",
+}
+# Compiled modules are named for the Python version they target.
+BINARY_PATTERN = re.compile(r"^rizomuvlink_python(\d)(\d+)\.(?:pyd|so)$")
 METADATA_FILES = ["README.md", "LICENSE.md"]
 
 DEFAULT_NAME = "rizomuvlink"
@@ -46,11 +57,11 @@ version = "{version}"
 description = "Python bindings for the RizomUV Link API"
 readme = "README.md"
 license-files = ["LICENSE.md"]
-requires-python = ">=3.6"
+requires-python = ">={requires_python}"
 
 [tool.hatch.build.targets.wheel]
 include = [{include}]
-artifacts = ["win/*.pyd", "win/*.dll"]
+artifacts = ["{package}/*.pyd", "{package}/*.dll", "{package}/*.so"]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"
@@ -64,7 +75,7 @@ class CustomBuildHook(BuildHookInterface):
     def initialize(self, version, build_data):
         build_data["pure_python"] = False
         build_data["infer_tag"] = False
-        build_data["tag"] = "py3-none-win_amd64"
+        build_data["tag"] = "py3-none-{platform_tag}"
 """
 
 
@@ -170,8 +181,33 @@ def download_repository(work_dir: Path, commit: str | None = None) -> Path:
     return roots[0]
 
 
-def stage_project(repo: Path, build_dir: Path, dist_name: str) -> None:
-    """Copy the sources into build_dir alongside a generated project file."""
+def find_platforms(repo: Path) -> list[str]:
+    """Platform packages present in the source, in PLATFORMS order.
+
+    Older commits only ship some platforms, so absent ones are skipped.
+    """
+    platforms = [name for name in PLATFORMS if (repo / name).is_dir()]
+    if not platforms:
+        expected = ", ".join(PLATFORMS)
+        raise SystemExit(f"Missing expected package in source: one of {expected}")
+    return platforms
+
+
+def minimum_python(package: Path) -> str:
+    """Oldest Python version a platform package has a compiled module for."""
+    versions = []
+    for path in package.iterdir():
+        match = BINARY_PATTERN.match(path.name)
+        if match:
+            versions.append((int(match[1]), int(match[2])))
+    if not versions:
+        raise SystemExit(f"No compiled modules found in source package: {package.name}")
+    major, minor = min(versions)
+    return f"{major}.{minor}"
+
+
+def stage_project(repo: Path, build_dir: Path, dist_name: str, platform: str) -> None:
+    """Copy the sources for one platform into build_dir with a generated project file."""
     build_dir.mkdir(parents=True, exist_ok=True)
 
     for name in MODULES:
@@ -180,11 +216,10 @@ def stage_project(repo: Path, build_dir: Path, dist_name: str) -> None:
             raise SystemExit(f"Missing expected module in source: {name}")
         shutil.copy2(source, build_dir / name)
 
-    for name in PACKAGES:
-        source = repo / name
-        if not source.is_dir():
-            raise SystemExit(f"Missing expected package in source: {name}")
-        shutil.copytree(source, build_dir / name)
+    package = repo / platform
+    if not package.is_dir():
+        raise SystemExit(f"Missing expected package in source: {platform}")
+    shutil.copytree(package, build_dir / platform)
 
     for name in METADATA_FILES:
         source = repo / name
@@ -193,12 +228,17 @@ def stage_project(repo: Path, build_dir: Path, dist_name: str) -> None:
         else:
             (build_dir / name).write_text(f"See {REPOSITORY_URL}\n", encoding="utf-8")
 
-    include = ", ".join(f'"{name}"' for name in MODULES + PACKAGES)
+    include = ", ".join(f'"{name}"' for name in [*MODULES, platform])
     pyproject = PYPROJECT_TEMPLATE.format(
-        name=dist_name, version=VERSION, include=include
+        name=dist_name,
+        version=VERSION,
+        include=include,
+        package=platform,
+        requires_python=minimum_python(package),
     )
+    hook = BUILD_HOOK.format(platform_tag=PLATFORMS[platform])
     (build_dir / "pyproject.toml").write_text(pyproject, encoding="utf-8")
-    (build_dir / "hatch_build.py").write_text(BUILD_HOOK, encoding="utf-8")
+    (build_dir / "hatch_build.py").write_text(hook, encoding="utf-8")
 
 
 def build_wheel(build_dir: Path, output_dir: Path) -> None:
@@ -252,10 +292,12 @@ def run(
     work_dir: Path, output_dir: Path, dist_name: str, commit: str | None = None
 ) -> None:
     repo = download_repository(work_dir, commit)
-    build_dir = work_dir / "build"
-    stage_project(repo, build_dir, dist_name)
-    build_wheel(build_dir, output_dir)
-    print(f"Wheel written to {output_dir}")
+    platforms = find_platforms(repo)
+    for platform in platforms:
+        build_dir = work_dir / "build" / platform
+        stage_project(repo, build_dir, dist_name, platform)
+        build_wheel(build_dir, output_dir)
+    print(f"Wheels for {', '.join(platforms)} written to {output_dir}")
 
 
 def main():

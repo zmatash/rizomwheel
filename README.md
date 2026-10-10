@@ -27,7 +27,18 @@ uvx --from git+https://github.com/zmatash/rizomwheel.git rizomwheel
 rizomwheel [-o OUTPUT_DIR] [--work-dir WORK_DIR] [--name NAME] [--commit COMMIT]
 ```
 
-The default run downloads the source, builds, and writes the wheel to `./dist`:
+The default run downloads the source, builds, and writes the wheels to `./dist`.
+
+One wheel is built for each platform the source ships binaries for. pip picks the right one
+for the machine it installs on:
+
+| Platform | Wheel tag | Python |
+| --- | --- | --- |
+| Windows | `win_amd64` | 3.6+ |
+| macOS | `macosx_10_15_universal2` (Intel and Apple Silicon) | 3.9+ |
+| Linux | `manylinux_2_24_x86_64` | 3.9+ |
+
+Older commits that only ship some platforms build only those wheels.
 
 ### Options
 
